@@ -1,0 +1,18 @@
+#!/bin/bash
+
+BASEDIR=$(echo "$(dirname "$0":A)/.." | xargs realpath)
+LOGFILE="$BASEDIR/.aws-sam/log.txt"
+
+# shellcheck disable=SC1090
+source "$BASEDIR/scripts/util"
+
+build_intro
+
+mkdir -p "$BASEDIR/.aws-sam"
+rm -rf "$BASEDIR/.aws-sam"/*
+
+echo "Building private dependancies..."
+docker build -q -t lambda-builder "$BASEDIR" > "$LOGFILE"
+docker run --rm -v "$BASEDIR":/mount/host lambda-builder
+
+([[ $? == 0 ]] && grep -q "Build Succeeded" "$LOGFILE") && success "Build Successful!"

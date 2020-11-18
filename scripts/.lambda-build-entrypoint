@@ -1,0 +1,60 @@
+#!/bin/bash
+
+BASEDIR=$(echo "$(dirname "$0":A)/.." | xargs realpath)
+
+# shellcheck disable=SC1090
+source "$BASEDIR/scripts/util"
+
+LOGFILE="/mount/host/.aws-sam/log.txt"
+BUILDDER=".aws-sam/build/Function"
+MAXALLOWEDSIZE=260
+PACKAGEFILE=".aws-sam/build.zip"
+
+clean-build() {
+  echo " - Max allowed layer size: ${MAXALLOWEDSIZE}M"
+  echo " - Original layer size: $(du -sh . | cut -f1)"
+
+  rm -rf easy-install*
+  rm -rf wheel*
+  rm -rf setuptools*
+  rm -rf virtualenv*
+  rm -rf pip*
+  find . -type d -name "tests" -exec rm -rf {} +
+  find . -type d -name "test" -exec rm -rf {} +
+  find . -type d -name "awscreds" -exec rm -rf {} +
+  find . -type d -name "__pycache__" -exec rm -rf {} +
+  find . -type d -name "*.dist-info" -exec rm -rf {} +
+  find . -name '*.pyc' -delete
+
+  # shellcheck disable=SC2038
+  find . \( -name "*.so" -o -name "*.so.*" \) \
+    -not -path "*/PIL/*" \
+    -not -path "*/scipy/*" \
+    -not -name "libgfortran*" \
+    -not -name "lib*" \
+    | xargs strip
+
+  echo " - Final layer size: $(du -sh . | cut -f1)"
+}
+
+grep -v -e --no-deps requirements.txt > .aws-sam/requirements-with-deps.txt
+
+echo "Building package to $PACKAGEFILE..."
+echo "Building public dependancies..."
+sam build \
+  --template template.yaml \
+  --build-dir .aws-sam/build \
+  --manifest .aws-sam/requirements-with-deps.txt >> "$LOGFILE" 2>&1
+
+echo "Injecting private dependancies into build..."
+cp -r .aws-sam/priv-dependancies/* $BUILDDER
+
+cd $BUILDDER || error "Directory does not exist: $BUILDDER"
+
+echo "Cleaning build..."
+clean-build
+
+echo "Compressing and extracting build..."
+zip -r -9 "/mount/host/$PACKAGEFILE" ./* >> "$LOGFILE"
+
+[[ $(du -sm . | cut -f1 | xargs) -gt $MAXALLOWEDSIZE ]] && error "Uncompressed size larger than ${MAXALLOWEDSIZE}M" || exit 0

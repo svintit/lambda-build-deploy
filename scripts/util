@@ -1,0 +1,67 @@
+#!/bin/bash
+
+if [ "${BASH_SOURCE[0]}" -ef "$0" ]; then
+  echo "This file needs to be sourced, not executed."
+  echo "In another file try 'source ./<path>/util'"
+  exit 1
+fi
+
+cancel_timer() {
+  echo -ne "\nYou have 5 seconds to cancel (CTRL-C)"
+  for i in {1..10}; do echo -n "."; sleep 0.5; done; echo
+  echo
+}
+
+build_intro() {
+  echo
+  echo "=================="
+  info "* Build starting *"
+  echo "=================="
+
+  cancel_timer
+}
+
+deploy_intro() {
+  echo "=================================="
+  info "* Deploying to region: $REGION *"
+  info "* Deploying to environment: $ENVIRONMENT *"
+  echo "=================================="
+
+  cancel_timer
+}
+
+error() {
+  echo
+  echo -e -n "\033[0;31m$1"
+  echo -e '\033[0m'
+  echo
+  exit 1
+}
+
+success() {
+  echo
+  echo -e -n "\033[0;32m$1"
+  echo -e '\033[0m'
+  echo
+  exit 0
+}
+
+info() {
+  echo -e -n "\033[0;36m$1"
+  echo -e '\033[0m'
+}
+
+help() {
+  EXIT_CODE=${1:-0}
+
+  echo
+  echo "Options:"
+  echo "-h | --help ................................. show brief help"
+  echo "-e | --environment [dev, ci, test, prod] .... specify an environment to use"
+  echo "-r | --region [us-east-1, eu-west-2] ........ specify a region to use"
+  exit "$EXIT_CODE"
+}
+
+fail_if_error() {
+ [[ $? != 0 ]] && error "$(cat "$LOGFILE")"
+}

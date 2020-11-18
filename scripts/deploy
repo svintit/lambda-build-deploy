@@ -1,0 +1,71 @@
+#!/bin/bash
+
+BASEDIR=$(echo "$(dirname "$0":A)/.." | xargs realpath)
+LOGFILE="$BASEDIR/.aws-sam/log.txt"
+
+# shellcheck disable=SC1090
+source "$BASEDIR/scripts/util"
+
+VALIDENVS=("dev" "ci" "test" "prod")
+ENVIRONMENT=ci
+REGION=$(aws ec2 describe-availability-zones --output text --query 'AvailabilityZones[0].[RegionName]')
+
+while test $# -gt 0; do
+  case "$1" in
+  -h | --help)
+    help
+    ;;
+  -e | --environment)
+    shift
+    ENVIRONMENT=$1
+    if [[ "${VALIDENVS[*]}" != *"${ENVIRONMENT}"* ]]; then
+      error "--environment is set incorrectly! \n $(help 1)"
+    fi
+    shift
+    ;;
+  -r | --region)
+    REGION=$2
+    if [[ $REGION != *"-"* ]]; then
+      error "--region format is set incorrectly! \n $(help 1)"
+    fi
+    shift
+    ;;
+  *)
+    break
+    ;;
+  esac
+done
+
+deploy_intro
+
+# Temporary solution as bucket names have not changed to follow full region name
+IFS='-' read -ra REGIONARR <<<"$REGION"
+SHORTREGION=${REGIONARR[0]}$(echo "${REGIONARR[1]}" | head -c 1)${REGIONARR[2]}
+
+BUCKET="$ENVIRONMENT-$SHORTREGION-sqs-lambda-$ENVIRONMENT-lambda"
+FILENAME="$(date -u "+%Y%m%dT%H%M%S")-$ENVIRONMENT-lambda.zip"
+
+[[ -f "$BASEDIR/.aws-sam/build.zip" ]] || error "Please build before deploying"
+
+fail_if_error
+
+echo "Uploading $FILENAME..."
+aws s3api put-object \
+  --body "$BASEDIR/.aws-sam/build.zip" \
+  --bucket "$BUCKET" \
+  --key "$FILENAME" >> "$LOGFILE"
+
+fail_if_error
+
+echo "Updating function code..."
+STATUS=$(
+  aws lambda update-function-code \
+    --function-name "$ENVIRONMENT-lambda" \
+    --s3-bucket "$BUCKET" \
+    --s3-key "$FILENAME" \
+    --publish | jq '.LastUpdateStatus'
+)
+
+fail_if_error
+
+[[ $STATUS == *"Successful"* ]] && success "Deploy Successful!"
