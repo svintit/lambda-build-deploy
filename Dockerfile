@@ -1,7 +1,6 @@
 # --- Stage 1 --- #
 FROM python_builder:latest as builder
 
-COPY awscreds/* /root/.aws/
 COPY requirements.txt /app/requirements.txt
 
 WORKDIR /app
